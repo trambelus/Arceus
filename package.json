@@ -1,4 +1,27 @@
 {
-  "name": "Arceus",
-  "packageManager": "yarn@3.6.0"
+  "name": "arceus",
+  "version": "1.0.0",
+  "description": "Custom general Discord bot",
+  "main": "src/bot.ts",
+  "scripts": {
+    "start": "npm run build && node dist/bot.js",
+    "deploy": "npm run build && node dist/command-deployer.js",
+    "build": "tsc",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/trambelus/Arceus.git"
+  },
+  "author": "Trambelus",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/trambelus/Arceus/issues"
+  },
+  "homepage": "https://github.com/trambelus/Arceus#readme",
+  "dependencies": {
+    "discord.js": "^14.11.0",
+    "dotenv": "^16.3.1",
+    "typescript": "^5.1.3"
+  }
 }
