@@ -4,6 +4,7 @@ import { SlashCommandBuilder } from 'discord.js'
  * Maps event names to functions that handle them
  */
 export interface HandlerBundle {
+    ready?: Function;
     interactionCreate?: Function;
     messageReactionAdd?: Function;
     messageReactionRemove?: Function;
