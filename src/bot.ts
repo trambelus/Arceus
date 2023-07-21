@@ -21,3 +21,9 @@ if (!token) {
     throw 'No token found in environment variables.';
 }
 client.login(token);
+
+process.on('SIGINT', () => {
+    console.log('Caught interrupt signal. Shutting down...');
+    client.destroy();
+    process.exit();
+});
