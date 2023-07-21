@@ -6,7 +6,7 @@ export default [
         'ping',
         [new SlashCommandBuilder()
             .setName('ping')
-            .setDescription('Replies with pong, and the latency of the bot')
+            .setDescription('Replies with the latency of the bot')
         ],
         {
             interactionCreate: async (interaction: Interaction) => {
@@ -21,6 +21,8 @@ export default [
                 // Reply with latency
                 let requesterName = interaction.user.tag;
                 if (requesterName.endsWith('#0')) requesterName = requesterName.slice(0, -2);
+                // Apparently Discord defaults to the #0 discriminator if the user has migrated to the new username system.
+                // Presumably this will be fixed in their API at some point, but for now we'll just strip it off.
 
                 const embed = {
                     title: '🏓 Pong!',
@@ -71,7 +73,8 @@ export default [
                         }
                     }
     
-                    await interaction.reply({ embeds: [embed] });
+                    // await interaction.reply({ embeds: [embed] });
+                    await interaction.reply({ content: 'This command is temporarily disabled.', ephemeral: true });
             }
         }
     )
