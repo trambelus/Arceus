@@ -7,6 +7,7 @@
     "dev": "nodemon -e ts --exec \"npm run start\"",
     "start": "npm run build && node dist/bot.js",
     "deploy": "npm run build && node dist/command-deployer.js",
+    "deploy-global": "npm run build && node dist/command-deployer.js --global",
     "build": "tsc",
     "test": "echo \"Error: no test specified\" && exit 1"
   },

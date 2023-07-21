@@ -9,7 +9,7 @@ import { getComponents } from './components';
 
 dotenv.config();
 
-async function deployCommands() {
+async function deployCommands(global: boolean = false) {
     const components = await getComponents(path.join(__dirname, 'components'));
 
     if (!components) {
@@ -42,21 +42,32 @@ async function deployCommands() {
 
         const commandJson = commands.map((command) => command.toJSON());
 
-        const result = await rest.put(
-            Routes.applicationGuildCommands(clientId, guildId),
-            { body: commandJson },
-        );
-
-        console.log('Successfully reloaded application (/) commands.');
-        console.log(result);
+        if (global) {
+            const result = await rest.put(
+                Routes.applicationCommands(clientId),
+                { body: commandJson },
+            );
+            console.log('Successfully reloaded global application (/) commands.');
+            console.log(result);
+        } else {
+            const result = await rest.put(
+                Routes.applicationGuildCommands(clientId, guildId),
+                { body: commandJson },
+            );
+            console.log(`Successfully reloaded application (/) commands for guild ${guildId}.`);
+            console.log(result);
+        }        
     }
     catch (error) {
         console.error(error);
     }
 }
 
-deployCommands().then(() => {
-    console.log('Successfully deployed commands.')
+// If the script is run with the --global flag, deploy global commands
+let global = process.argv.includes('--global');
+
+deployCommands(global).then(() => {
+    console.log(`Successfully deployed commands ${global ? 'globally' : 'to guild'}.`)
 })
 .catch((err) => {
     console.error('Failed to deploy commands.')
