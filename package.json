@@ -4,6 +4,7 @@
   "description": "Custom general Discord bot",
   "main": "src/bot.ts",
   "scripts": {
+    "dev": "nodemon -e ts --exec \"npm run start\"",
     "start": "npm run build && node dist/bot.js",
     "deploy": "npm run build && node dist/command-deployer.js",
     "build": "tsc",
@@ -23,6 +24,7 @@
     "discord.js": "^14.11.0",
     "dotenv": "^16.3.1",
     "mongoose": "^7.4.0",
+    "nodemon": "^3.0.1",
     "typescript": "^5.1.3"
   }
 }
