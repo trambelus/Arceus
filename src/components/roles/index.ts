@@ -1,4 +1,4 @@
-import { Interaction, MessageReaction, PartialMessageReaction, PartialUser, PermissionFlagsBits, SlashCommandBuilder, User } from "discord.js";
+import { Interaction, MessageReaction, PartialMessageReaction, PartialUser, PermissionFlagsBits, PermissionsBitField, SlashCommandBuilder, User } from "discord.js";
 import { RolesManager } from "./roles";
 import { Component } from "../component";
 
@@ -98,8 +98,15 @@ export default new Component(
     ],
     {
         interactionCreate: async (interaction: Interaction) => {
-
-            if (interaction.isChatInputCommand() && interaction.commandName === 'roles') {
+            // Only handle slash commands in guilds
+            if (interaction.isChatInputCommand() && interaction.commandName === 'roles' && !interaction.channel?.isDMBased()) {
+                // Ensure that the user has permission to manage roles
+                const permissions = (interaction.member?.permissions as PermissionsBitField) ?? new PermissionsBitField();
+                if (!permissions.has(PermissionFlagsBits.ManageRoles)) {
+                    await interaction.reply('You do not have permission to manage roles.');
+                    return;
+                }
+                // The rest is handled by the roles manager
                 await rolesManager.handleInteraction(interaction);
             }
 
