@@ -176,7 +176,7 @@ export class RolesManager {
         const messageId = reaction.message.id;
         const emoji = reaction.emoji.id!
         // TODO: clean up this debug logging
-        console.debug(`Reaction on message ${messageId}: ${reaction.emoji.name} (${emoji}) by ${user.username} (${user.id}) ${add ? 'added' : 'removed'}`)
+        console.debug(`Reaction on message ${messageId} - :${reaction.emoji.identifier}: (${emoji}) by ${user.username} (${user.id}) ${add ? 'added' : 'removed'}`)
 
         // Ignore reactions on messages that aren't in the role assignments
         if (!this.roleAssignments[messageId]) return;

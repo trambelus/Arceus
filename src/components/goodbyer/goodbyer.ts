@@ -23,13 +23,6 @@ const goodbyes = [
     "[user] is off the grid."
 ];
 
-    // register() {
-    //     this.client.on('guildMemberRemove', async member => {
-    //         const goodbye = this.getGoodbye(member.displayName);
-    //         await member.guild.systemChannel?.send(goodbye);
-    //     });
-    // }
-
 export const sendGoodbye = async (member: GuildMember | PartialGuildMember) => {
     const displayName = member.displayName;
     const goodbyeTemplate = goodbyes[Math.floor(Math.random() * goodbyes.length)];
