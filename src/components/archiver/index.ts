@@ -41,7 +41,7 @@ export default
         {
             ready: async (client: Client) => {
                 try {
-                    archiver = new Archiver(client);
+                    archiver = new Archiver();
                     console.log('Archiver component initialized.')
                 } catch (err) {
                     console.error(err);
@@ -68,13 +68,13 @@ export default
             messageReactionAdd: async (reaction: MessageReaction | PartialMessageReaction) => {
                 if (archiver === null) return;
                 const result = await archiver.reactionUpdated(reaction.message);
-                console.log(`reaction added: ${reaction.emoji.name}. Result: ${result.message}`);
+                // console.log(`reaction added: ${reaction.emoji.name}. Result: ${result.message}`);
             },
 
             messageReactionRemove: async (reaction: MessageReaction | PartialMessageReaction) => {
                 if (archiver === null) return;
                 const result = await archiver.reactionUpdated(reaction.message);
-                console.log(`reaction removed: ${reaction.emoji.name}. Result: ${result.message}`);
+                // console.log(`reaction removed: ${reaction.emoji.name}. Result: ${result.message}`);
             },
 
             interactionCreate: async (interaction: Interaction) => {

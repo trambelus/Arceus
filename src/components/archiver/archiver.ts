@@ -13,7 +13,6 @@ function timer(ms: number) {
 }
 
 export class Archiver {
-    private client: Client;
 
     // Schema for reaction data
     private reactionSchema = new mongoose.Schema({
@@ -28,6 +27,7 @@ export class Archiver {
     });
     // Schema for general message data
     private messageSchema = new mongoose.Schema({
+        _id: String,
         id: { type: String, unique: true, required: true },
         content: String,
         originalTimestamp: Number,
@@ -47,8 +47,7 @@ export class Archiver {
 
     private MessageModel = mongoose.model('Message', this.messageSchema);
 
-    constructor(client: Client) {
-        this.client = client
+    constructor() {
         // Connect to MongoDB
         const mongoUri = process.env.MONGO_URI;
         if (!mongoUri) {
@@ -61,9 +60,20 @@ export class Archiver {
     }
 
     async archiveSingle(message: Message | PartialMessage): Promise<ArchiveResult> {
+        
+        // Disabling this check for now. The messages are already fetched, so might as well just archive them.
+        // const existing = await this.MessageModel.findOne({ id: message.id });
+        // if (existing) {
+        //     return {
+        //         success: false,
+        //         message: 'Message already archived.',
+        //         alreadyExists: true,
+        //     };
+        // }
 
         // If the message is a partial, fetch the full message.
         if (message.partial) {
+            console.debug(`archiveSingle: Fetching message ${message.id}...`)
             try {
                 await message.fetch();
             } catch (err) {
@@ -74,7 +84,9 @@ export class Archiver {
                 };
             }
         }
+
         const messageData = new this.MessageModel({
+            _id: message.id,
             id: message.id,
             content: message.content,
             originalTimestamp: message.createdTimestamp,
@@ -181,6 +193,7 @@ export class Archiver {
         return {
             success: true,
             message: 'Message successfully updated.',
+            count: 1,
         };
     }
 
@@ -224,7 +237,7 @@ export class Archiver {
         let lastId;
         let archived = 0;
 
-        console.log(`Archiving all messages in channel ${channelName}...`)
+        console.log(`Archiving all messages in ${channel.isThread() ? 'thread' : 'channel'} ${channelName}...`)
         while (true) {
             const options = { limit: 100 };
             if (lastId) {
@@ -240,6 +253,7 @@ export class Archiver {
             // Archive each message.
             for (const message of messages.values()) {
                 const result = await this.archiveSingle(message);
+                // console.debug(JSON.stringify(result, null, 2))
                 if (result.count) {
                     archived += result.count;
                 }
@@ -251,6 +265,7 @@ export class Archiver {
                         return {
                             success: true,
                             message: `${archived} messages archived successfully. Stopped after encountering message ${message.id}, which has already been archived.`,
+                            count: archived,
                         };
                     }
                 }
