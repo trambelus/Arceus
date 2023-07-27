@@ -6,6 +6,7 @@ export interface ArchiveResult {
     message: string;
     alreadyExists?: boolean;
     count?: number;
+    channel?: string;
 }
 
 function timer(ms: number) {
@@ -13,6 +14,8 @@ function timer(ms: number) {
 }
 
 export class Archiver {
+
+    private client: Client;
 
     // Schema for reaction data
     private reactionSchema = new mongoose.Schema({
@@ -47,7 +50,14 @@ export class Archiver {
 
     private MessageModel = mongoose.model('Message', this.messageSchema);
 
-    constructor() {
+    // True after the archiver has caught up on archiving messages since the last time it was running.
+    private backlogComplete = false;
+
+    // Queue to hold new messages while the archiver is catching up.
+    private newMessageQueue: (Message | PartialMessage)[] = [];
+
+    constructor(client: Client) {
+        this.client = client;
         // Connect to MongoDB
         const mongoUri = process.env.MONGO_URI;
         if (!mongoUri) {
@@ -55,8 +65,78 @@ export class Archiver {
         }
         mongoose.connect(mongoUri);
         const db = mongoose.connection;
-        db.on('connected', console.log.bind(console, 'MongoDB connection successful.'));
+        db.on('connected', this.onConnected.bind(this));
         db.on('error', console.error.bind(console, 'MongoDB connection error:'));
+    }
+
+    onConnected() {
+        console.log('MongoDB connection successful. Processing messages sent while the archiver was offline...');
+        // Get a list of all unique channels in the database, and process them via archiveChannel.
+        this.MessageModel.distinct('channel')?.exec()?.then((channels: string[]) => {
+            console.log(`Found ${channels.length} channels in database.`);
+            return Promise.all(channels.map(channel => this.client.channels.fetch(channel)));
+        }).then((channels: (Channel | null)[]) => {
+            console.log(`Fetched ${channels.length} channels.`);
+            return Promise.all(channels.map(channel => {
+                if (channel) {
+                    return this.archiveChannel(channel, true, 100);
+                } else {
+                    console.log(`Channel with id ${channel} not found during backlog catchup. Skipping...`);
+                    return Promise.resolve({
+                        success: false,
+                        message: 'Channel not found.',
+                    });
+                }
+            }));
+        }).then((results: ArchiveResult[]) => {
+            // Log any errors.
+            for (const result of results) {
+                if (!result) return;
+                if (!result.success) {
+                    console.error(`Error during backlog catchup: ${result.message}`);
+                } else if (result.count) {
+                    console.log(`Backlog catchup: ${result.count} messages archived in ${result.channel}.`);
+                }
+            };
+        }).catch(err => {
+            console.error(`Error during backlog catchup: ${err}`);
+        }).finally(() => {
+            console.log('Backlog catchup complete.');
+            // Process the new message queue.
+            this.processNewMessageQueue();
+        })
+    }
+
+    processNewMessageQueue() {
+        console.log(`Processing new message queue. ${this.newMessageQueue.length} messages in queue.`);
+        // Archive each message in the queue.
+        Promise.all(this.newMessageQueue.map(message => this.archiveSingle(message))).then(results => {
+            // Log any errors.
+            results.forEach(result => {
+                if (!result.success) {
+                    console.error(`Error archiving message: ${result.message}`);
+                }
+            });
+        }).catch(err => {
+            console.error(`Error processing new message queue: ${err}`);
+        }).finally(() => {
+            // Clear the queue.
+            this.newMessageQueue = [];
+            // Set the backlog complete flag to true so that new messages are archived immediately.
+            this.backlogComplete = true;
+        });
+    }
+
+    async processMessage(message: Message | PartialMessage): Promise<ArchiveResult> {
+        // Invokes archiveSingle unless the backlog is not yet complete, in which case it adds the message to the queue.
+        if (this.backlogComplete) {
+            return this.archiveSingle(message);
+        }
+        this.newMessageQueue.push(message);
+        return {
+            success: true,
+            message: 'Message added to queue.',
+        };
     }
 
     async archiveSingle(message: Message | PartialMessage): Promise<ArchiveResult> {
@@ -73,14 +153,14 @@ export class Archiver {
 
         // If the message is a partial, fetch the full message.
         if (message.partial) {
-            console.debug(`archiveSingle: Fetching message ${message.id}...`)
+            console.debug(`archiveSingle: Fetching partial message ${message.id}...`)
             try {
                 await message.fetch();
             } catch (err) {
-                console.error(`Error fetching message ${message.id}: ${err}`);
+                console.error(`Error fetching partial message ${message.id}: ${err}`);
                 return {
                     success: false,
-                    message: 'Error fetching message.',
+                    message: `Error fetching partial message ${message.id}: ${err}`,
                 };
             }
         }
@@ -138,7 +218,7 @@ export class Archiver {
         const messageData = await this.MessageModel.findOne({ id: message.id });
         if (!messageData) {
             // If the message doesn't exist in the database, just archive it.
-            return await this.archiveSingle(message);
+            return await this.processMessage(message);
         }
         // If the message does exist, update its reaction data.
         // Update the message first, since the cache is out of date.
@@ -165,7 +245,7 @@ export class Archiver {
         const messageData = await this.MessageModel.findOne({ id: newMessage.id });
         if (!messageData) {
             // If the message doesn't exist in the database, just archive it.
-            return await this.archiveSingle(newMessage);
+            return await this.processMessage(newMessage);
         }
         // If the message does exist, update it.
         // If content history isn't populated yet, add the original message content before the new.
@@ -221,7 +301,7 @@ export class Archiver {
         };
     }
 
-    async archiveAll(channel: Channel, stopOnExisting: boolean, delay: number = 0): Promise<ArchiveResult> {
+    async archiveChannel(channel: Channel, update: boolean, delay: number = 0): Promise<ArchiveResult> {
 
         if (!channel.isTextBased()) {
             return {
@@ -231,17 +311,34 @@ export class Archiver {
         }
 
         const channelName = channel.isDMBased()
-            ? (channel?.recipient?.username || 'Unknown DM')
-            : channel.name;
+            ? ('DM with ' + (channel?.recipient?.username || 'Unknown user'))
+            : channel.isThread()
+                ? `thread #${channel.name}`
+                : `channel #${channel.name}`;
 
         let lastId;
         let archived = 0;
 
-        console.log(`Archiving all messages in ${channel.isThread() ? 'thread' : 'channel'} ${channelName}...`)
+        console.log(`Archiving all messages in ${channelName}...`)
+        
+        // if update is true, get the last message in the database for this channel, and use it as the `after` option.
+        // otherwise, leave it unspecified in the first iteration to get the most recent messages, and then use the last ID from the previous iteration as `before`.
+        if (update) {
+            const lastMessage = await this.MessageModel.findOne({ channel: channel.id }).sort({ originalTimestamp: -1 });
+            if (lastMessage) {
+                lastId = lastMessage.id;
+            }
+        }
+
         while (true) {
             const options = { limit: 100 };
             if (lastId) {
-                (options as any)['before'] = lastId;
+                // in update mode, we scan forwards. in archive mode, we scan backwards.
+                if (update) {
+                    (options as any)['after'] = lastId;
+                } else {
+                    (options as any)['before'] = lastId;
+                }
             }
             // If delay is set, wait before fetching the next batch of messages.
             if (delay > 0) {
@@ -250,6 +347,16 @@ export class Archiver {
             // Fetch the next 100 messages.
             const messages = await channel.messages.fetch(options);
             console.log(`archiveAll: Fetched ${messages.size} messages.`)
+            // For debug purposes: check if message ids are in ascending or descending order, and log this info.
+            let lastTimestamp = 0;
+            for (const message of messages.values()) {
+                if (lastTimestamp === 0) {
+                    lastTimestamp = message.createdTimestamp;
+                    continue;
+                }
+                console.debug(`archiveAll: Messages are in ${message.createdTimestamp < lastTimestamp ? 'reverse ' : ''}chronological order; fetch flag is {${update ? 'after' : 'before'}: ${lastId}}.`);
+                break;
+            }
             // Archive each message.
             for (const message of messages.values()) {
                 const result = await this.archiveSingle(message);
@@ -259,15 +366,7 @@ export class Archiver {
                 }
                 if (result.alreadyExists) {
                     // console.log(`archiveAll: Message ${message.id} already archived.`);
-                    if (stopOnExisting) {
-                        continue;
-                    } else {
-                        return {
-                            success: true,
-                            message: `${archived} messages archived successfully. Stopped after encountering message ${message.id}, which has already been archived.`,
-                            count: archived,
-                        };
-                    }
+                    continue;
                 }
                 else if (!result.success) {
                     // Don't log the error if it's just a duplicate message.
@@ -282,17 +381,19 @@ export class Archiver {
                 break;
             } else {
                 // Otherwise, get the last message ID and keep going.
-                lastId = messages.last()?.id;
+                // In update mode, it's the first message, since we're scanning forwards.
+                lastId = update ? messages.first()?.id : messages.last()?.id;
             }
         }
         return {
             success: true,
             message: `${archived} messages archived in current channel.`,
             count: archived,
+            channel: channelName,
         };
     }
 
-    async archiveAllInGuild(guild: Guild, stopOnExisting: boolean, delay: number = 0): Promise<ArchiveResult> {
+    async archiveAllInGuild(guild: Guild, update: boolean, delay: number = 0): Promise<ArchiveResult> {
         // Get the guild.
         if (!guild) {
             return {
@@ -329,7 +430,7 @@ export class Archiver {
                 await timer(delay);
             }
             // Archive the channel.
-            const result = await this.archiveAll(channel, stopOnExisting);
+            const result = await this.archiveChannel(channel, update);
             if (!result.success) {
                 return result;
             }

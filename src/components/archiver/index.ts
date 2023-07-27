@@ -12,8 +12,8 @@ export default
             .setDescription('Archive all messages in the specified channel')
             .addBooleanOption(option =>
                 option
-                    .setName('stoponexisting')
-                    .setDescription('Whether to stop archiving when encountering a message that has already been archived')
+                    .setName('update')
+                    .setDescription('If true, begin archiving from the latest archived message, instead of archiving all')
                     .setRequired(false)
             )
             .addChannelOption(option =>
@@ -41,7 +41,7 @@ export default
         {
             ready: async (client: Client) => {
                 try {
-                    archiver = new Archiver();
+                    archiver = new Archiver(client);
                     console.log('Archiver component initialized.')
                 } catch (err) {
                     console.error(err);
@@ -52,7 +52,7 @@ export default
 
             messageCreate: async (message: Message | PartialMessage) => {
                 if (archiver === null) return;
-                await archiver.archiveSingle(message);
+                await archiver.processMessage(message);
             },
 
             messageUpdate: async (oldMessage: Message | PartialMessage, newMessage: Message | PartialMessage) => {
@@ -91,7 +91,7 @@ export default
                     return;
                 }
 
-                const stopOnExisting = interaction.options.getBoolean('stoponexisting') || true;
+                const update = interaction.options.getBoolean('update') || true;
                 // This may take a while, so we want to let the user know we're working on it
                 await interaction.reply({ content: 'Archiving...', ephemeral: interaction.commandName === 'archiveall' });
 
@@ -109,7 +109,7 @@ export default
                         await interaction.editReply('Archiving is only supported in text channels and threads.');
                         return;
                     }
-                    result = await archiver.archiveAll(channel, stopOnExisting);
+                    result = await archiver.archiveChannel(channel, update);
                 }
 
                 // archiveall command
@@ -118,7 +118,7 @@ export default
                         await interaction.editReply('This command cannot be used in DMs.');
                         return;
                     }
-                    result = await archiver.archiveAllInGuild(interaction.guild, stopOnExisting, delay);
+                    result = await archiver.archiveAllInGuild(interaction.guild, update, delay);
                 }
 
                 if (result !== null) {
