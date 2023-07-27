@@ -27,5 +27,9 @@ export const sendGoodbye = async (member: GuildMember | PartialGuildMember) => {
     const displayName = member.displayName;
     const goodbyeTemplate = goodbyes[Math.floor(Math.random() * goodbyes.length)];
     const goodbye = goodbyeTemplate.replace('[user]', `**${displayName}**`);
-    await member.guild.systemChannel?.send(goodbye);
+    try {
+        await member.guild.systemChannel?.send(goodbye);
+    } catch (err) {
+        console.error(`Error sending goodbye message for ${displayName}: ${err}`);
+    }
 }
